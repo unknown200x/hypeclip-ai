@@ -17,8 +17,13 @@
 #include <string>
 #include <memory>
 
-struct obs_source;          // fwd (avoids pulling obs headers into host tests)
+#if defined(HYPECLIP_HAVE_OBS)
+#include <obs.h>            // real obs_source_t / audio_data when building the plugin
+#else
+struct obs_source;          // fwd decls for host unit-test builds (no OBS)
 typedef struct obs_source obs_source_t;
+struct audio_data;
+#endif
 
 namespace hypeclip {
 
