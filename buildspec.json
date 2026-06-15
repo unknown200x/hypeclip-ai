@@ -1,0 +1,37 @@
+{
+  "name": "hypeclip-ai",
+  "displayName": "HypeClip AI",
+  "version": "1.0.0",
+  "author": "HypeClip AI",
+  "website": "https://github.com/hypeclip/hypeclip-ai",
+  "email": "support@hypeclip.ai",
+  "uuids": {
+    "windowsApp": "com.hypeclip.ai"
+  },
+  "platformConfig": {
+    "macos": { "bundleId": "com.hypeclip.ai" }
+  },
+  "dependencies": {
+    "prebuilt": {
+      "version": "2024-03-19",
+      "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+      "label": "Pre-Built obs-deps",
+      "hashes": {
+        "macos": "",
+        "windows-x64": ""
+      }
+    },
+    "qt6": {
+      "version": "2024-03-19",
+      "baseUrl": "https://github.com/obsproject/obs-deps/releases/download",
+      "label": "Pre-Built Qt6",
+      "hashes": { "windows-x64": "" }
+    },
+    "obs-studio": {
+      "version": "30.2.0",
+      "repository": "obsproject/obs-studio",
+      "branch": "release/30.2",
+      "label": "OBS Studio"
+    }
+  }
+}
