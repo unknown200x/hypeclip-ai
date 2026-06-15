@@ -15,13 +15,13 @@ ReplayStylePreset presetFor(ReplayStyle s) {
         case ReplayStyle::Esports:
             return {"Esports", 45, true,  true,  "obs_stinger_transition", "INSTANT REPLAY"};
         case ReplayStyle::Hype:
-            return {"Hype",    35, true,  true,  "swipe_transition",        "🔥 REPLAY 🔥"};
+            return {"Hype",    35, true,  true,  "swipe_transition",        "REPLAY"};
         case ReplayStyle::Cinematic:
             return {"Cinematic",30, false, true,  "fade_transition",        "REPLAY"};
         case ReplayStyle::Streamer:
             return {"Streamer", 50, false, false, "slide_transition",       "REPLAY!"};
         case ReplayStyle::Retro:
-            return {"Retro",    60, true,  false, "cut_transition",         "▶ REPLAY"};
+            return {"Retro",    60, true,  false, "cut_transition",         "REPLAY"};
     }
     return {"Esports", 45, true, true, "fade_transition", "INSTANT REPLAY"};
 }
@@ -48,8 +48,9 @@ void InstantReplayDirector::buildSceneIfNeeded() {
     if (existing) { replayScene_ = existing; }
     else {
         obs_scene_t* scene = obs_scene_create(kReplaySceneName);
-        replayScene_ = obs_scene_get_source(scene);
-        obs_source_addref((obs_source_t*)replayScene_);
+        // obs_source_get_ref adds a reference we own (obs_source_addref was removed
+        // in newer OBS); released in shutdown().
+        replayScene_ = obs_source_get_ref(obs_scene_get_source(scene));
     }
 
     if (!mediaSource_) {
@@ -90,30 +91,26 @@ void InstantReplayDirector::applyStyle(ReplayStyle style, const ClipRecord& clip
 
     // Caption: combine style banner with the auto title.
     obs_data_t* cap = obs_source_get_settings((obs_source_t*)lowerThird_);
-    std::string caption = std::string(p.captionText) + "  —  " + clip.title;
+    std::string caption = std::string(p.captionText) + "  -  " + clip.title;
     obs_data_set_string(cap, "text", caption.c_str());
     obs_source_update((obs_source_t*)lowerThird_, cap);
     obs_data_release(cap);
 
     // NOTE: zoom punch-in (animated sceneitem transform), freeze-frame (pause at
     // marker), motion blur and particle overlays are implemented as OverlayEffect
-    // modules driven on a render tick; see docs/SPEC.md §Instant Replay. The hooks
+    // modules driven on a render tick; see docs/SPEC.md. The hooks
     // (p.zoomPunchIn / p.freezeOnImpact) gate those effect modules.
 }
 
 void InstantReplayDirector::playReplay(const ClipRecord& clip, ReplayStyle style) {
     bool expected = false;
     if (!playing_.compare_exchange_strong(expected, true)) {
-        HC_INFO("Replay already playing — skipping (failsafe: no replay loops)");
+        HC_INFO("Replay already playing - skipping (failsafe: no replay loops)");
         return;   // never stack replays
     }
-    // Marshal scene work onto the OBS UI/graphics thread.
-    obs_queue_task(OBS_TASK_UI, [](void* d){
-        auto* self = static_cast<InstantReplayDirector*>(d);
-        // remember live scene
-        obs_source_t* cur = obs_frontend_get_current_scene();
-        if (cur) { self->liveSceneName_ = obs_source_get_name(cur); obs_source_release(cur); }
-    }, this, true);
+    // Remember the current (live) scene so we can return to it.
+    obs_source_t* cur = obs_frontend_get_current_scene();
+    if (cur) { liveSceneName_ = obs_source_get_name(cur); obs_source_release(cur); }
 
     applyStyle(style, clip);
 
@@ -129,7 +126,7 @@ void InstantReplayDirector::returnToLive() {
     playing_.store(false);
 }
 
-void InstantReplayDirector::mediaEnded(void* data, void* /*calldata*/) {
+void InstantReplayDirector::mediaEnded(void* data, calldata_t* /*cd*/) {
     auto* self = static_cast<InstantReplayDirector*>(data);
     obs_queue_task(OBS_TASK_UI, [](void* d){
         static_cast<InstantReplayDirector*>(d)->returnToLive();
