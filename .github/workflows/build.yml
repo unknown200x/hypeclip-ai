@@ -1,0 +1,81 @@
+name: Build HypeClip AI (Windows)
+
+# When this runs: every push, and whenever you click "Run workflow" by hand.
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:        # <- gives you the manual "Run workflow" button
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows x64 plugin
+    runs-on: windows-2022
+
+    steps:
+      # 1. Grab your code.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Install the Qt6 toolkit (needed for the dock window).
+      - name: Install Qt6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.6.3'
+          arch: 'win64_msvc2019_64'
+          cache: true
+
+      # 3. Build the OBS Studio developer libraries the plugin links against.
+      #    Built once, then reused from cache so later runs are fast.
+      - name: Cache OBS build
+        id: cache-obs
+        uses: actions/cache@v4
+        with:
+          path: obs-install
+          key: obs-30.2.0-windows-x64-v1
+
+      - name: Build OBS Studio libraries (first run only)
+        if: steps.cache-obs.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          git clone --recursive --depth 1 --branch 30.2.0 https://github.com/obsproject/obs-studio.git obs-src
+          cd obs-src
+          # OBS fetches its own prebuilt dependencies via its preset.
+          cmake --preset windows-x64
+          # Build just the two libraries we need (libobs + the frontend API).
+          cmake --build build_x64 --config RelWithDebInfo --target libobs obs-frontend-api
+          cmake --install build_x64 --config RelWithDebInfo --prefix "${{ github.workspace }}/obs-install"
+
+      # 4. Configure and build the plugin against Qt + the OBS libraries.
+      - name: Configure HypeClip AI
+        shell: pwsh
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/obs-install;${env:QT_ROOT_DIR}" `
+            -DENABLE_QT=ON -DENABLE_FRONTEND_API=ON
+
+      - name: Build HypeClip AI
+        shell: pwsh
+        run: cmake --build build --config RelWithDebInfo
+
+      # 5. Gather the finished plugin + data + the easy installer into one folder.
+      - name: Assemble package
+        shell: pwsh
+        run: |
+          $out = "HypeClipAI-Windows"
+          New-Item -ItemType Directory -Force -Path "$out" | Out-Null
+          $dll = Get-ChildItem -Path build -Recurse -Filter hypeclip-ai.dll | Select-Object -First 1
+          Copy-Item $dll.FullName "$out\hypeclip-ai.dll"
+          Copy-Item -Recurse -Force data "$out\data"
+          if (Test-Path "Install-HypeClip-AI.bat") { Copy-Item "Install-HypeClip-AI.bat" "$out\" }
+          if (Test-Path "INSTALL-README.txt")       { Copy-Item "INSTALL-README.txt" "$out\" }
+
+      # 6. Upload so you can download it from the run page.
+      - name: Upload plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: HypeClipAI-Windows
+          path: HypeClipAI-Windows
