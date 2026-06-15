@@ -79,12 +79,36 @@ if(ENABLE_QT)
 endif()
 
 # ---- OBS libraries --------------------------------------------------------
-find_package(libobs REQUIRED)
+# Two ways to find OBS:
+#  (A) CI "from source" mode: the cloud build compiles libobs + obs-frontend-api
+#      from the OBS source tree and hands us their paths directly. Enabled when
+#      HYPECLIP_OBS_SRC is defined. This avoids needing an OBS SDK install.
+#  (B) Normal mode: a proper OBS dev package is present -> use find_package.
+if(HYPECLIP_OBS_SRC)
+  message(STATUS "HypeClip: using OBS from source tree at ${HYPECLIP_OBS_SRC}")
+
+  add_library(OBS::libobs UNKNOWN IMPORTED)
+  set_target_properties(OBS::libobs PROPERTIES
+    IMPORTED_LOCATION "${OBS_LIBOBS_LIB}"
+    INTERFACE_INCLUDE_DIRECTORIES "${HYPECLIP_OBS_SRC}/libobs;${OBS_CONFIG_INCLUDE}")
+
+  if(ENABLE_FRONTEND_API)
+    add_library(OBS::obs-frontend-api UNKNOWN IMPORTED)
+    set_target_properties(OBS::obs-frontend-api PROPERTIES
+      IMPORTED_LOCATION "${OBS_FRONTEND_LIB}"
+      INTERFACE_INCLUDE_DIRECTORIES "${HYPECLIP_OBS_SRC}/UI/obs-frontend-api")
+  endif()
+else()
+  find_package(libobs REQUIRED)
+  if(ENABLE_FRONTEND_API)
+    find_package(obs-frontend-api REQUIRED)
+  endif()
+endif()
+
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HYPECLIP_HAVE_OBS=1)
 
 if(ENABLE_FRONTEND_API)
-  find_package(obs-frontend-api REQUIRED)
   target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
   target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE HYPECLIP_FRONTEND=1)
 endif()
