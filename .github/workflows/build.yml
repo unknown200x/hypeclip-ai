@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+# Opt into the newer Node.js 24 engine now (GitHub forces this on 2026-06-16).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build-windows:
     name: Build Windows x64 plugin
@@ -27,53 +31,65 @@ jobs:
           arch: 'win64_msvc2019_64'
           cache: true
 
-      # 3. Build the OBS Studio developer libraries the plugin links against.
-      #    Built once, then reused from cache so later runs are fast.
-      - name: Cache OBS build
-        id: cache-obs
-        uses: actions/cache@v4
-        with:
-          path: obs-install
-          key: obs-30.2.0-windows-x64-v1
-
-      - name: Build OBS Studio libraries (first run only)
-        if: steps.cache-obs.outputs.cache-hit != 'true'
+      # 3. Build ONLY the two OBS libraries the plugin links against
+      #    (libobs + obs-frontend-api). We do NOT install all of OBS - that was
+      #    what failed before - we just compile these two and use them in place.
+      - name: Build OBS libraries
         shell: pwsh
         run: |
           git clone --recursive --depth 1 --branch 30.2.0 https://github.com/obsproject/obs-studio.git obs-src
           cd obs-src
-          # OBS fetches its own prebuilt dependencies via its preset.
           cmake --preset windows-x64
-          # Build just the two libraries we need (libobs + the frontend API).
           cmake --build build_x64 --config RelWithDebInfo --target libobs obs-frontend-api
-          cmake --install build_x64 --config RelWithDebInfo --prefix "${{ github.workspace }}/obs-install"
 
-      # 4. Configure and build the plugin against Qt + the OBS libraries.
+      # 4. Find the freshly built library + header files and remember their paths.
+      - name: Locate OBS build outputs
+        id: obs
+        shell: pwsh
+        run: |
+          $root = "${{ github.workspace }}/obs-src"
+          $libobs   = (Get-ChildItem "$root/build_x64" -Recurse -Filter obs.lib              | Where-Object FullName -match 'libobs' | Select-Object -First 1).FullName
+          $frontend = (Get-ChildItem "$root/build_x64" -Recurse -Filter obs-frontend-api.lib | Select-Object -First 1).FullName
+          $cfg      = (Get-ChildItem "$root/build_x64" -Recurse -Filter obsconfig.h          | Select-Object -First 1).FullName
+          $cfgdir   = Split-Path $cfg
+          if (-not $libobs -or -not $frontend -or -not $cfgdir) { throw "Could not locate OBS build outputs (libobs=$libobs frontend=$frontend cfg=$cfgdir)" }
+          "libobs=$libobs"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "frontend=$frontend" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "cfgdir=$cfgdir"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "libobs   = $libobs"
+          Write-Host "frontend = $frontend"
+          Write-Host "cfgdir   = $cfgdir"
+
+      # 5. Configure and build the plugin against Qt + those two libraries.
       - name: Configure HypeClip AI
         shell: pwsh
         run: |
           cmake -B build -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
-            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/obs-install;${env:QT_ROOT_DIR}" `
-            -DENABLE_QT=ON -DENABLE_FRONTEND_API=ON
+            -DCMAKE_PREFIX_PATH="${env:QT_ROOT_DIR}" `
+            -DENABLE_QT=ON -DENABLE_FRONTEND_API=ON `
+            -DHYPECLIP_OBS_SRC="${{ github.workspace }}/obs-src" `
+            -DOBS_LIBOBS_LIB="${{ steps.obs.outputs.libobs }}" `
+            -DOBS_FRONTEND_LIB="${{ steps.obs.outputs.frontend }}" `
+            -DOBS_CONFIG_INCLUDE="${{ steps.obs.outputs.cfgdir }}"
 
       - name: Build HypeClip AI
         shell: pwsh
         run: cmake --build build --config RelWithDebInfo
 
-      # 5. Gather the finished plugin + data + the easy installer into one folder.
+      # 6. Gather the finished plugin + data + the easy installer into one folder.
       - name: Assemble package
         shell: pwsh
         run: |
           $out = "HypeClipAI-Windows"
           New-Item -ItemType Directory -Force -Path "$out" | Out-Null
           $dll = Get-ChildItem -Path build -Recurse -Filter hypeclip-ai.dll | Select-Object -First 1
+          if (-not $dll) { throw "hypeclip-ai.dll was not produced" }
           Copy-Item $dll.FullName "$out\hypeclip-ai.dll"
           Copy-Item -Recurse -Force data "$out\data"
           if (Test-Path "Install-HypeClip-AI.bat") { Copy-Item "Install-HypeClip-AI.bat" "$out\" }
           if (Test-Path "INSTALL-README.txt")       { Copy-Item "INSTALL-README.txt" "$out\" }
 
-      # 6. Upload so you can download it from the run page.
+      # 7. Upload so you can download it from the run page.
       - name: Upload plugin
         uses: actions/upload-artifact@v4
         with:
