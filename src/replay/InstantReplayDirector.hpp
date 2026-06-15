@@ -20,6 +20,10 @@
 #include <atomic>
 #include <string>
 
+#if defined(HYPECLIP_HAVE_OBS)
+#include <obs.h>            // defines calldata_t used by the media-ended callback
+#endif
+
 namespace hypeclip {
 
 class InstantReplayDirector {
@@ -39,7 +43,7 @@ private:
     void returnToLive();
 
 #if defined(HYPECLIP_FRONTEND)
-    static void mediaEnded(void* data, void* calldata);
+    static void mediaEnded(void* data, calldata_t* cd);
 #endif
 
     std::atomic<bool> playing_{false};
