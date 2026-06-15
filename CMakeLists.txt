@@ -65,9 +65,14 @@ endif()
 # Qt dock UI
 if(ENABLE_QT)
   find_package(Qt6 COMPONENTS Widgets Core Gui REQUIRED)
-  set(CMAKE_AUTOMOC ON)
-  set(CMAKE_AUTOUIC ON)
-  set(CMAKE_AUTORCC ON)
+  # Enable Qt's meta-object compiler ON THE TARGET. (Setting the CMAKE_AUTOMOC
+  # variable here would be too late, since the target was already created above —
+  # so we set the target property directly. This generates the moc glue for every
+  # Q_OBJECT class and fixes "unresolved external symbol metaObject/qt_metacall".)
+  set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+    AUTOMOC ON
+    AUTOUIC ON
+    AUTORCC ON)
   target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     src/ui/HypeClipDock.cpp
     src/ui/DashboardTab.cpp
