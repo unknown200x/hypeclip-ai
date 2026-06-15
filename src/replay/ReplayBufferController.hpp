@@ -10,6 +10,10 @@
 #include <string>
 #include <atomic>
 
+#if defined(HYPECLIP_FRONTEND)
+#include <obs-frontend-api.h>   // defines enum obs_frontend_event (avoids ambiguity)
+#endif
+
 namespace hypeclip {
 
 class ReplayBufferController {
