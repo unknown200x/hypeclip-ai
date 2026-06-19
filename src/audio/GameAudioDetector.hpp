@@ -1,26 +1,28 @@
 #pragma once
-// Detects salient GAME-audio events from the desktop/app/source stream:
-// explosions, gunfire bursts, kill-confirm stings, victory/round-win jingles.
-//
-// Like the voice detector this is training-free and uses adaptive baselines so
-// it adjusts to per-game mix levels automatically.
+// Game-audio analysis (v2). Adaptive baseline; produces 0..100 sub-scores
+// (level / spike / intensity) for the meters, rule engine and tuning controls.
 #include "audio/AudioFeatures.hpp"
 #include "core/Types.hpp"
-#include <optional>
 
 namespace hypeclip {
 
+struct GameScores {
+    float level     = 0;  // loudness 0..100
+    float spike     = 0;  // transient/onset strength 0..100
+    float intensity = 0;  // smoothed combat intensity 0..100
+    int   transientRun = 0;
+    bool  musicalStinger = false;  // victory/round jingle detected
+};
+
 class GameAudioDetector {
 public:
-    std::optional<Contribution> feed(const FrameFeatures& f, TimePoint now);
-    float intensity() const { return smoothed_; }
+    // `spikeSensitivity`/`clustering` 0..100 from GameAudioTuning let the user
+    // bias transient detection without recompiling.
+    GameScores analyze(const FrameFeatures& f, float spikeSensitivity, float clustering);
 
 private:
-    float baseEnergy_ = 0.01f;
-    float smoothed_   = 0.0f;
-    int   transientRun_ = 0;   // consecutive sharp onsets => gunfight, not one shot
-    int   musicalFrames_ = 0;  // sustained tonal energy => victory jingle/stinger
-    TimePoint lastEmit_{};
+    float baseEnergy_ = 0.01f, smoothed_ = 0.0f;
+    int   transientRun_ = 0, musicalFrames_ = 0;
 };
 
 } // namespace hypeclip

@@ -1,13 +1,12 @@
 #pragma once
-// The brain. Subscribes to detector Contributions, maintains a sliding window,
-// computes per-layer scores, fuses them via ConfidenceEngine + MomentumTracker,
-// applies failsafes, and publishes a HighlightEvent when threshold is crossed.
-//
-// Runs on whichever thread publishes contributions; internal state is mutex
-// guarded. Evaluation is cheap (sum over a few deque entries).
+// The decision brain (v2). Fuses the AI scorer + the user rule engine, writes the
+// live MetricSnapshot, applies the false-positive learner and failsafes, and emits
+// a fully-explained HighlightEvent. Honors master + per-feature toggles.
 #include "core/Types.hpp"
 #include "scoring/MomentumTracker.hpp"
 #include "scoring/ConfidenceEngine.hpp"
+#include "scoring/SessionLearner.hpp"
+#include "rules/RuleEngine.hpp"
 #include <deque>
 #include <mutex>
 
@@ -16,17 +15,15 @@ namespace hypeclip {
 class ScoreEngine {
 public:
     ScoreEngine();
-
-    // Wire up: subscribe to EventBus contributions.
     void start();
     void stop();
+    void reloadConfig();   // re-pull rules + flags after settings change
 
-    // Exposed for the UI hype meter / clip-worthiness readout (0..100).
     float currentConfidence() const;
 
-    // Visible for unit tests (no EventBus needed).
+    // Visible for unit tests.
     void  ingest(const Contribution& c);
-    float evaluate(TimePoint now, HighlightEvent& out, bool& fired);
+    bool  evaluate(TimePoint now, HighlightEvent& out);
 
 private:
     void pruneOldEntries(TimePoint now);
@@ -34,15 +31,18 @@ private:
 
     mutable std::mutex mtx_;
     std::deque<Contribution> window_;
-    MomentumTracker momentum_;
+    MomentumTracker  momentum_;
     ConfidenceEngine confidence_;
+    SessionLearner   learner_;
+    RuleEngine       rules_;
 
     TimePoint lastClipTime_{};
     HighlightType lastClipType_ = HighlightType::Generic;
-    float lastConfidence_ = 0.0f;
+    float   lastConfidence_ = 0.0f;
+    TimePoint aboveSince_{};
     uint64_t busToken_ = 0;
 
-    static constexpr auto kWindow = Millis(4000);  // scoring window
+    static constexpr auto kWindow = Millis(4000);
 };
 
 } // namespace hypeclip

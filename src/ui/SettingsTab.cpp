@@ -2,139 +2,95 @@
 #include "core/Config.hpp"
 #include "core/PipelineController.hpp"
 
-#include <obs.h>
-#include <obs-module.h>
-
-#include <QFormLayout>
 #include <QVBoxLayout>
-#include <QComboBox>
+#include <QFormLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
 #include <QSlider>
 #include <QSpinBox>
 #include <QCheckBox>
-#include <QGroupBox>
+#include <QComboBox>
+#include <QLineEdit>
 #include <QLabel>
+#include <QPushButton>
 
 namespace hypeclip {
 
 SettingsTab::SettingsTab(QWidget* parent) : QWidget(parent) {
-    auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(12, 12, 12, 12);
-
-    mode_ = new QComboBox();
-    mode_->addItem(obs_module_text("Settings.Mode.Beginner"));
-    mode_->addItem(obs_module_text("Settings.Mode.Creator"));
-    {
-        auto* row = new QFormLayout();
-        row->addRow(obs_module_text("Settings.Mode"), mode_);
-        root->addLayout(row);
-    }
-
-    advanced_ = new QGroupBox(obs_module_text("Tab.Settings"));
-    auto* form = new QFormLayout(advanced_);
-
-    threshold_ = new QSlider(Qt::Horizontal);
-    threshold_->setRange(40, 100);
-    form->addRow(obs_module_text("Settings.Threshold"), threshold_);
-
-    pre_ = new QSpinBox();  pre_->setRange(5, 120);
-    post_ = new QSpinBox(); post_->setRange(2, 60);
-    form->addRow(obs_module_text("Settings.PreSeconds"), pre_);
-    form->addRow(obs_module_text("Settings.PostSeconds"), post_);
-
-    mic_  = new QComboBox();
-    game_ = new QComboBox();
-    form->addRow(obs_module_text("Settings.MicSource"), mic_);
-    form->addRow(obs_module_text("Settings.GameAudioSource"), game_);
-
-    style_ = new QComboBox();
-    style_->addItems({"Esports", "Hype", "Cinematic", "Streamer", "Retro"});
-    form->addRow(obs_module_text("Settings.ReplayStyle"), style_);
-
-    vision_     = new QCheckBox();
-    commentary_ = new QCheckBox();
-    form->addRow(obs_module_text("Settings.EnableVision"), vision_);
-    form->addRow(obs_module_text("Settings.EnableCommentary"), commentary_);
-
-    retention_ = new QSpinBox(); retention_->setRange(0, 365);
-    form->addRow(obs_module_text("Settings.RetentionDays"), retention_);
-
-    root->addWidget(advanced_);
-    root->addStretch();
-
-    populateAudioSources();
-    loadFromConfig();
-
-    connect(mode_, qOverload<int>(&QComboBox::currentIndexChanged), this, &SettingsTab::onModeChanged);
-    // Persist on any change.
-    auto onChange = [this]{ apply(); };
-    connect(threshold_, &QSlider::valueChanged, this, onChange);
-    connect(pre_,  qOverload<int>(&QSpinBox::valueChanged), this, onChange);
-    connect(post_, qOverload<int>(&QSpinBox::valueChanged), this, onChange);
-    connect(mic_,  qOverload<int>(&QComboBox::currentIndexChanged), this, onChange);
-    connect(game_, qOverload<int>(&QComboBox::currentIndexChanged), this, onChange);
-    connect(style_,qOverload<int>(&QComboBox::currentIndexChanged), this, onChange);
-    connect(vision_, &QCheckBox::toggled, this, onChange);
-    connect(commentary_, &QCheckBox::toggled, this, onChange);
-    connect(retention_, qOverload<int>(&QSpinBox::valueChanged), this, onChange);
-}
-
-void SettingsTab::populateAudioSources() {
-    mic_->addItem(tr("Auto"), QString());
-    game_->addItem(tr("Auto"), QString());
-    // Enumerate OBS audio-capable sources.
-    obs_enum_sources([](void* d, obs_source_t* src) -> bool {
-        auto* self = static_cast<SettingsTab*>(d);
-        const uint32_t flags = obs_source_get_output_flags(src);
-        if (flags & OBS_SOURCE_AUDIO) {
-            const char* n = obs_source_get_name(src);
-            self->mic_->addItem(n, QString(n));
-            self->game_->addItem(n, QString(n));
-        }
-        return true;
-    }, this);
-}
-
-void SettingsTab::loadFromConfig() {
+    loading_ = true;
     const Settings s = Config::instance().get();
+    auto* root = new QVBoxLayout(this);
+    root->setContentsMargins(12,12,12,12);
+
+    auto* g = new QGroupBox("General");
+    auto* form = new QFormLayout(g);
+
+    mode_ = new QComboBox(); mode_->addItem("Beginner (works instantly)"); mode_->addItem("Creator (full control)");
     mode_->setCurrentIndex(s.mode == Mode::Creator ? 1 : 0);
-    threshold_->setValue((int)s.threshold);
-    pre_->setValue(s.preSeconds);
-    post_->setValue(s.postSeconds);
-    style_->setCurrentIndex((int)s.replayStyle);
-    vision_->setChecked(s.enableVision);
-    commentary_->setChecked(s.enableCommentary);
-    retention_->setValue(s.retentionDays);
-    if (!s.micSourceName.empty())  mic_->setCurrentText(QString::fromStdString(s.micSourceName));
-    if (!s.gameAudioSourceName.empty()) game_->setCurrentText(QString::fromStdString(s.gameAudioSourceName));
-    onModeChanged(mode_->currentIndex());
+    form->addRow("Mode", mode_);
+
+    auto* thrRow = new QWidget(); auto* th = new QHBoxLayout(thrRow); th->setContentsMargins(0,0,0,0);
+    threshold_ = new QSlider(Qt::Horizontal); threshold_->setRange(40,100); threshold_->setValue((int)s.threshold);
+    thrVal_ = new QLabel(QString::number((int)s.threshold)); thrVal_->setFixedWidth(28);
+    connect(threshold_, &QSlider::valueChanged, thrVal_, [this](int v){ thrVal_->setText(QString::number(v)); });
+    th->addWidget(threshold_); th->addWidget(thrVal_);
+    form->addRow("AI clip threshold", thrRow);
+
+    minGap_ = new QSpinBox(); minGap_->setRange(1000,60000); minGap_->setSingleStep(500);
+    minGap_->setSuffix(" ms"); minGap_->setValue(s.minClipGapMs);
+    form->addRow("Min spacing between clips", minGap_);
+
+    retention_ = new QSpinBox(); retention_->setRange(0,365); retention_->setValue(s.retentionDays);
+    retention_->setSpecialValueText("Keep forever");
+    form->addRow("Delete clips after (days)", retention_);
+
+    fpLearning_ = new QCheckBox("Learn session noise & block false positives (coughs, keyboard, pings)");
+    fpLearning_->setChecked(s.falsePositiveLearning);
+    form->addRow("", fpLearning_);
+
+    clipDir_ = new QLineEdit(QString::fromStdString(s.clipDirectory));
+    clipDir_->setPlaceholderText("Leave blank to use your OBS recording folder");
+    form->addRow("Clip folder", clipDir_);
+    root->addWidget(g);
+
+    auto* reset = new QPushButton("Reset to defaults");
+    root->addWidget(reset);
+    root->addStretch();
+    loading_ = false;
+
+    connect(mode_, qOverload<int>(&QComboBox::currentIndexChanged), this, &SettingsTab::pushToConfig);
+    connect(threshold_, &QSlider::valueChanged, this, &SettingsTab::pushToConfig);
+    connect(minGap_, qOverload<int>(&QSpinBox::valueChanged), this, &SettingsTab::pushToConfig);
+    connect(retention_, qOverload<int>(&QSpinBox::valueChanged), this, &SettingsTab::pushToConfig);
+    connect(fpLearning_, &QCheckBox::toggled, this, &SettingsTab::pushToConfig);
+    connect(clipDir_, &QLineEdit::editingFinished, this, &SettingsTab::pushToConfig);
+    connect(reset, &QPushButton::clicked, this, &SettingsTab::resetDefaults);
 }
 
-void SettingsTab::onModeChanged(int idx) {
-    const bool creator = (idx == 1);
-    advanced_->setVisible(creator);
-    if (!creator) {
-        // Beginner: reset to safe defaults.
-        Config::instance().applyBeginnerDefaults();
-    }
-    apply();
-}
-
-void SettingsTab::apply() {
+void SettingsTab::pushToConfig() {
+    if (loading_) return;
     Settings s = Config::instance().get();
-    s.mode = mode_->currentIndex() == 1 ? Mode::Creator : Mode::Beginner;
-    if (s.mode == Mode::Creator) {
-        s.threshold   = (float)threshold_->value();
-        s.preSeconds  = pre_->value();
-        s.postSeconds = post_->value();
-        s.replayStyle = (ReplayStyle)style_->currentIndex();
-        s.enableVision = vision_->isChecked();
-        s.enableCommentary = commentary_->isChecked();
-        s.retentionDays = retention_->value();
-        s.micSourceName  = mic_->currentData().toString().toStdString();
-        s.gameAudioSourceName = game_->currentData().toString().toStdString();
-    }
+    s.mode = mode_->currentIndex()==1 ? Mode::Creator : Mode::Beginner;
+    s.threshold = (float)threshold_->value();
+    s.minClipGapMs = minGap_->value();
+    s.retentionDays = retention_->value();
+    s.falsePositiveLearning = fpLearning_->isChecked();
+    s.clipDirectory = clipDir_->text().toStdString();
     Config::instance().set(s);
     PipelineController::instance().reconfigure();
+}
+
+void SettingsTab::resetDefaults() {
+    Config::instance().applyBeginnerDefaults();
+    Config::instance().save();
+    PipelineController::instance().reconfigure();
+    // Reload visible controls.
+    const Settings s = Config::instance().get();
+    loading_ = true;
+    mode_->setCurrentIndex(0); threshold_->setValue((int)s.threshold);
+    minGap_->setValue(s.minClipGapMs); retention_->setValue(s.retentionDays);
+    fpLearning_->setChecked(s.falsePositiveLearning); clipDir_->setText("");
+    loading_ = false;
 }
 
 } // namespace hypeclip

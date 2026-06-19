@@ -1,11 +1,9 @@
 #pragma once
-// Highlights + timeline list: every saved clip with type, confidence and time.
-// Double-click opens the clip in the system player. Subscribes to ClipRecord
-// events to append live, marshalling onto the UI thread.
+// Priority #10 — replay/clip timeline with reason + actions.
+#include "core/Types.hpp"
 #include <QWidget>
-
-class QListWidget;
-class QListWidgetItem;
+#include <vector>
+class QListWidget; class QListWidgetItem; class QLabel;
 
 namespace hypeclip {
 
@@ -14,17 +12,19 @@ class HighlightsTab : public QWidget {
 public:
     explicit HighlightsTab(QWidget* parent = nullptr);
     ~HighlightsTab() override;
-
 signals:
-    void clipArrived(QString title, QString path, int confidence);
-
+    void clipArrived();
 private slots:
-    void appendClip(QString title, QString path, int confidence);
-    void open(QListWidgetItem* item);
-
+    void refreshList();
+    void showReason(int row);
+    void openSelected();
+    void favoriteSelected();
+    void deleteSelected();
+    void exportSelected();
 private:
     QListWidget* list_ = nullptr;
+    QLabel* reason_ = nullptr;
+    std::vector<ClipRecord> clips_;
     unsigned long long busToken_ = 0;
 };
-
 } // namespace hypeclip

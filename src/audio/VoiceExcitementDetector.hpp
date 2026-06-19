@@ -1,38 +1,32 @@
 #pragma once
-// Detects vocal excitement from the MIC stream: shouting, screaming, laughter,
-// sudden vocal spikes, sustained celebration.
-//
-// Design principle: NO training and NO speech-to-text. We use an adaptive
-// running baseline of the speaker's normal level so "LET'S GOOOO" reliably
-// stands out from calm talking regardless of mic gain or room — i.e. it works
-// out of the box for anyone.
+// Mic analysis (v2). Training-free, adaptive-baseline. Produces granular 0..100
+// sub-scores the user can threshold independently (Priority #5) and that feed the
+// live meters + rule engine. Emission decisions live in AudioCapture so they can
+// read the user's thresholds + feature toggles.
 #include "audio/AudioFeatures.hpp"
 #include "core/Types.hpp"
-#include <optional>
 
 namespace hypeclip {
 
+struct MicScores {
+    float level      = 0;  // loudness 0..100
+    float excitement = 0;  // above-baseline 0..100
+    float peak       = 0;  // short-term peak 0..100
+    float scream     = 0;  // vocal strain 0..100
+    float laughter   = 0;  // rhythmic bursts 0..100
+    float reaction   = 0;  // sustained reaction energy 0..100
+    int   sustainedMs = 0; // how long excitement has held
+};
+
 class VoiceExcitementDetector {
 public:
-    // Feed one analysis frame (≈20 ms). Returns a Contribution when the frame
-    // (or sustained run) is judged exciting; std::nullopt otherwise.
-    std::optional<Contribution> feed(const FrameFeatures& f, TimePoint now);
-
-    // Current normalized excitement 0..1 (drives the live Hype Meter even when
-    // below clip threshold).
-    float excitement() const { return smoothedExcite_; }
+    MicScores analyze(const FrameFeatures& f, TimePoint now);
 
 private:
-    // Exponential moving baselines (slow) and short-term (fast) trackers.
-    float baseRms_   = 0.02f;   // adapts to ambient/normal speaking level
-    float baseVoice_ = 0.0f;
-    float fastRms_   = 0.0f;
+    float baseRms_ = 0.02f, baseVoice_ = 0.0f, fastRms_ = 0.0f;
     float smoothedExcite_ = 0.0f;
-
-    int   sustainedFrames_ = 0; // consecutive exciting frames (celebration runs)
-    int   laughterFrames_  = 0; // rhythmic voiced bursts -> laughter
+    int   sustainedFrames_ = 0, laughterFrames_ = 0;
     float prevZcr_ = 0.0f;
-    TimePoint lastEmit_{};
 };
 
 } // namespace hypeclip

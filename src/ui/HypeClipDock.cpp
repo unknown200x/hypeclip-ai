@@ -1,46 +1,55 @@
 #include "ui/HypeClipDock.hpp"
 #include "ui/DashboardTab.hpp"
+#include "ui/AudioTab.hpp"
+#include "ui/RulesTab.hpp"
+#include "ui/ReplayTab.hpp"
 #include "ui/HighlightsTab.hpp"
 #include "ui/SettingsTab.hpp"
+#include "ui/UiUtil.hpp"
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
 
 #include <QVBoxLayout>
 #include <QTabWidget>
+#include <QScrollArea>
 #include <QLabel>
 
 namespace hypeclip {
 
+static QWidget* scrollable(QWidget* inner) {
+    auto* sa = new QScrollArea();
+    sa->setWidgetResizable(true);
+    sa->setFrameShape(QFrame::NoFrame);
+    sa->setWidget(inner);
+    return sa;
+}
+
 HypeClipDock::HypeClipDock(QWidget* parent) : QFrame(parent) {
     setObjectName("HypeClipDock");
-    // Native-ish dark styling; OBS already applies a dark theme, we just refine.
-    setStyleSheet(
-        "#HypeClipDock { background:#1b1d23; }"
-        "QTabBar::tab { padding:6px 12px; }"
-        "QLabel { color:#d6d8de; }");
+    setStyleSheet(ui::darkStyle());
 
     auto* root = new QVBoxLayout(this);
-    root->setContentsMargins(0, 0, 0, 0);
+    root->setContentsMargins(0,0,0,0); root->setSpacing(0);
 
-    auto* header = new QLabel("  HypeClip AI  ·  " +
-                              QString(obs_module_text("HypeClipAI.Tagline")));
-    header->setStyleSheet("font-size:13px; font-weight:700; color:#39d98a; padding:6px;");
+    auto* header = new QLabel("  HypeClip AI  ·  Never miss a moment.");
+    header->setStyleSheet("font-size:13px;font-weight:700;color:#39d98a;padding:7px;background:#16181d;");
     root->addWidget(header);
 
     auto* tabs = new QTabWidget();
-    tabs->addTab(new DashboardTab(),  obs_module_text("Tab.Dashboard"));
-    tabs->addTab(new HighlightsTab(), obs_module_text("Tab.Highlights"));
-    tabs->addTab(new SettingsTab(),   obs_module_text("Tab.Settings"));
+    tabs->addTab(scrollable(new DashboardTab()),  "Dashboard");
+    tabs->addTab(scrollable(new AudioTab()),      "Audio");
+    tabs->addTab(scrollable(new RulesTab()),      "Rules");
+    tabs->addTab(scrollable(new ReplayTab()),     "Replay");
+    tabs->addTab(new HighlightsTab(),             "Highlights");
+    tabs->addTab(scrollable(new SettingsTab()),   "Settings");
     root->addWidget(tabs);
 }
 
 void HypeClipDock::registerDock() {
     auto* dock = new HypeClipDock();
-    dock->setWindowTitle(obs_module_text("HypeClipAI.Dock"));
-    // OBS 30+ takes ownership of the QWidget and persists the dock by id.
-    obs_frontend_add_dock_by_id("hypeclip_ai_dock",
-                                obs_module_text("HypeClipAI.Dock"), dock);
+    dock->setWindowTitle("HypeClip AI");
+    obs_frontend_add_dock_by_id("hypeclip_ai_dock", "HypeClip AI", dock);
 }
 
 } // namespace hypeclip

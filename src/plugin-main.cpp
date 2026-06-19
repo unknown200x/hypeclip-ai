@@ -32,10 +32,13 @@ static void on_frontend_event(enum obs_frontend_event event, void*) {
             PipelineController::instance().startup();
             break;
         case OBS_FRONTEND_EVENT_STREAMING_STOPPED:
-        case OBS_FRONTEND_EVENT_RECORDING_STOPPED:
-            // End-of-session best-of reel (Top 10 by confidence).
-            PipelineController::instance().storage().writeBestOfPlaylist(10);
+        case OBS_FRONTEND_EVENT_RECORDING_STOPPED: {
+            // End-of-session best-of reel — only if enabled (Priority #1 toggle).
+            const auto s = Config::instance().get();
+            if (s.masterEnabled && s.features.endOfStreamHighlights)
+                PipelineController::instance().storage().writeBestOfPlaylist(10);
             break;
+        }
         case OBS_FRONTEND_EVENT_EXIT:
             PipelineController::instance().shutdown();
             break;

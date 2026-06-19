@@ -1,71 +1,79 @@
 #include "core/PipelineController.hpp"
-#include "core/Config.hpp"
+#include "core/MetricsHub.hpp"
 #include "core/Log.hpp"
 
 namespace hypeclip {
 
-PipelineController& PipelineController::instance() {
-    static PipelineController c;
-    return c;
-}
+PipelineController& PipelineController::instance() { static PipelineController c; return c; }
 
 void PipelineController::startup() {
     if (started_) return;
     started_ = true;
 
-    const Settings s = Config::instance().get();
-
     rb_.init();
-    rb_.setAutoStart(true);            // works out of the box: start RB if needed
+    rb_.setAutoStart(true);
     director_.init();
-
     clipMgr_ = std::make_unique<ClipManager>(rb_, director_);
     clipMgr_->start();
     storage_.start();
     score_.start();
 
-    mic_  = std::make_unique<AudioCapture>(CaptureRole::Mic);
-    game_ = std::make_unique<AudioCapture>(CaptureRole::Game);
-    mic_->attach(s.micSourceName);
-    game_->attach(s.gameAudioSourceName);
-    mic_->start();
-    game_->start();
+    reconfigure();   // brings up audio/vision according to master + feature flags
+    HC_INFO("HypeClip pipeline started");
+}
 
-    if (s.enableVision) {
-        VisionConfig vc; vc.useOnnx = true;
-        vision_.start(vc);
-    }
-
-    // Out-of-the-box safety: make sure the replay buffer is live so the very
-    // first highlight can be captured.
+void PipelineController::startAudio(const Settings& s) {
+    if (audioRunning_) return;
+    auto mk = [](std::vector<std::unique_ptr<AudioCapture>>& vec, CaptureRole role,
+                 const std::vector<std::string>& names) {
+        if (names.empty()) { vec.push_back(std::make_unique<AudioCapture>(role)); vec.back()->attach(""); }
+        else for (const auto& n : names) { vec.push_back(std::make_unique<AudioCapture>(role)); vec.back()->attach(n); }
+        for (auto& c : vec) c->start();
+    };
+    if (s.features.audioDetection && s.features.micDetection)       mk(mics_,  CaptureRole::Mic,  s.micSources);
+    if (s.features.audioDetection && s.features.gameAudioDetection) mk(games_, CaptureRole::Game, s.gameSources);
+    audioRunning_ = true;
     rb_.ensureActive();
+}
 
-    HC_INFO("HypeClip pipeline started (threshold=%.0f, vision=%d)",
-            s.threshold, (int)s.enableVision);
+void PipelineController::stopAudio() {
+    for (auto& c : mics_)  { c->stop(); c->detach(); }
+    for (auto& c : games_) { c->stop(); c->detach(); }
+    mics_.clear(); games_.clear();
+    audioRunning_ = false;
+    MetricsHub::instance().reset();
 }
 
 void PipelineController::reconfigure() {
     if (!started_) return;
     const Settings s = Config::instance().get();
+    score_.reloadConfig();
 
-    if (mic_)  { mic_->detach();  mic_->attach(s.micSourceName); }
-    if (game_) { game_->detach(); game_->attach(s.gameAudioSourceName); }
-
-    if (s.enableVision && !vision_.isRunning()) {
-        VisionConfig vc; vc.useOnnx = true; vision_.start(vc);
-    } else if (!s.enableVision && vision_.isRunning()) {
+    // Priority #1: master OFF => full idle (no threads, no resources).
+    if (!s.masterEnabled) {
+        stopAudio();
         vision_.stop();
+        HC_INFO("Master disabled — pipeline idle");
+        return;
     }
-    HC_INFO("HypeClip reconfigured");
+
+    // Rebuild audio to reflect device/toggle changes.
+    stopAudio();
+    startAudio(s);
+
+    // Vision (optional GPU) follows its toggle.
+    const bool wantVision = s.features.visualDetection;
+    if (wantVision && !vision_.isRunning())      { VisionConfig vc; vc.useOnnx = true; vision_.start(vc); }
+    else if (!wantVision && vision_.isRunning()) { vision_.stop(); }
+
+    HC_INFO("Reconfigured (mic=%zu game=%zu vision=%d)", mics_.size(), games_.size(), (int)wantVision);
 }
 
 void PipelineController::shutdown() {
     if (!started_) return;
     started_ = false;
-
+    stopAudio();
     vision_.stop();
-    if (mic_)  { mic_->stop();  mic_->detach();  mic_.reset(); }
-    if (game_) { game_->stop(); game_->detach(); game_.reset(); }
     score_.stop();
     storage_.stop();
     if (clipMgr_) { clipMgr_->stop(); clipMgr_.reset(); }
