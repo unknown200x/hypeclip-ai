@@ -107,7 +107,7 @@ if(HYPECLIP_OBS_SRC)
     add_library(OBS::obs-frontend-api UNKNOWN IMPORTED)
     set_target_properties(OBS::obs-frontend-api PROPERTIES
       IMPORTED_LOCATION "${OBS_FRONTEND_LIB}"
-      INTERFACE_INCLUDE_DIRECTORIES "${HYPECLIP_OBS_SRC}/UI/obs-frontend-api")
+      INTERFACE_INCLUDE_DIRECTORIES "${HYPECLIP_OBS_SRC}/frontend/api")
   endif()
 else()
   find_package(libobs REQUIRED)
