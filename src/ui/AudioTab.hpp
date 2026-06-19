@@ -2,7 +2,7 @@
 #include <QWidget>
 #include <QMap>
 #include <QString>
-class QListWidget; class QSlider; class QSpinBox; class QLabel; class QTimer;
+class QListWidget; class QSlider; class QSpinBox; class QLabel; class QTimer; class QFormLayout;
 
 namespace hypeclip {
 
@@ -14,7 +14,7 @@ private slots:
     void pushToConfig();
     void poll();
 private:
-    QSlider* addSlider(class QFormLayout* form, const QString& key, const QString& label, int val);
+    QSlider* addSlider(QFormLayout* form, const QString& key, const QString& label, int val);
     QListWidget* micList_ = nullptr;
     QListWidget* gameList_ = nullptr;
     QMap<QString, QSlider*> sliders_;
