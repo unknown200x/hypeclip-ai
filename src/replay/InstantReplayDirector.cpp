@@ -75,8 +75,7 @@ obs_source_t* InstantReplayDirector::resolveReplayScene(const ReplayConfig& rc) 
         // (clip path filled by caller via playReplay)
         obs_data_release(set);
     }
-    obs_source_addref((obs_source_t*)minimalScene_);  // caller releases
-    return (obs_source_t*)minimalScene_;
+return obs_source_get_ref((obs_source_t*)minimalScene_);  // caller releases
 }
 
 void InstantReplayDirector::applyTransition(const std::string& name, int durationMs) {
