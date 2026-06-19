@@ -28,6 +28,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   # Core
   src/core/Config.cpp
   src/core/EventBus.cpp
+  src/core/MetricsHub.cpp
   src/core/PipelineController.cpp
 
   # Audio
@@ -36,10 +37,12 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
   src/audio/VoiceExcitementDetector.cpp
   src/audio/GameAudioDetector.cpp
 
-  # Scoring
+  # Scoring + rules
   src/scoring/ScoreEngine.cpp
   src/scoring/MomentumTracker.cpp
   src/scoring/ConfidenceEngine.cpp
+  src/scoring/SessionLearner.cpp
+  src/rules/RuleEngine.cpp
 
   # Replay / clips
   src/replay/ReplayBufferController.cpp
@@ -76,6 +79,9 @@ if(ENABLE_QT)
   target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     src/ui/HypeClipDock.cpp
     src/ui/DashboardTab.cpp
+    src/ui/AudioTab.cpp
+    src/ui/RulesTab.cpp
+    src/ui/ReplayTab.cpp
     src/ui/HighlightsTab.cpp
     src/ui/SettingsTab.cpp
     src/ui/HypeMeter.cpp)
