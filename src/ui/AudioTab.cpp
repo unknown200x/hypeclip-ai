@@ -56,7 +56,7 @@ void AudioTab::refreshSources() {
 
 void AudioTab::showEvent(QShowEvent* e) {
     QWidget::showEvent(e);
-    refreshSources();   // OBS audio devices exist by the time you open this tab
+    refreshSources();
 }
 
 AudioTab::AudioTab(QWidget* parent) : QWidget(parent) {
